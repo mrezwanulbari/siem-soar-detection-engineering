@@ -1,0 +1,54 @@
+title: Authentication Brute-Force Pattern Detection
+id: 8f2a3c1e-4b7d-4e9a-9c3f-1a2b3c4d5e6f
+status: stable
+description: >
+  Detects a high volume of failed authentication attempts against a single account
+  or from a single source within a short window, indicative of brute-force or
+  credential-stuffing activity.
+references:
+  - https://attack.mitre.org/techniques/T1110/
+author: Shakil Md. Rezwanul Bari
+date: 2026/07/09
+tags:
+  - attack.credential_access
+  - attack.t1110
+logsource:
+  category: authentication
+  product: windows
+detection:
+  selection:
+    EventID:
+      - 4625  # Windows failed logon
+  timeframe: 5m
+  condition: selection | count(TargetUserName) by IpAddress > 10
+fields:
+  - TargetUserName
+  - IpAddress
+  - Workstation
+falsepositives:
+  - Legitimate users repeatedly mistyping passwords (rare at this volume/window)
+  - Misconfigured service accounts retrying with stale credentials — check for a
+    single consistent source IP tied to internal infrastructure before escalating
+  - VPN concentrators or load balancers that mask true source IP — ensure the
+    detection is fed post-NAT/true-source IP where possible
+level: medium
+tuning_notes: >
+  Baseline the "> 10 in 5m" threshold against your environment before deploying —
+  high-turnover call centers or shared kiosk workstations may need a higher
+  threshold or a per-workstation exclusion list. Pair with a second-stage rule
+  that alerts at high severity only when a brute-force pattern is followed by a
+  successful authentication (EventID 4624) from the same source, which is a much
+  stronger compromise indicator than failed attempts alone.
+
+# --- Platform translation notes ---
+# Splunk SPL equivalent (adjust index/sourcetype to your environment):
+#   index=wineventlog EventCode=4625
+#   | bin _time span=5m
+#   | stats count by src_ip, TargetUserName, _time
+#   | where count > 10
+#
+# Microsoft Sentinel KQL equivalent:
+#   SecurityEvent
+#   | where EventID == 4625
+#   | summarize FailCount = count() by IpAddress, TargetUserName, bin(TimeGenerated, 5m)
+#   | where FailCount > 10
